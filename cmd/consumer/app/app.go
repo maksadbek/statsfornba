@@ -12,6 +12,7 @@ import (
 
 	"github.com/kelseyhightower/envconfig"
 	_ "github.com/lib/pq"
+	"go.uber.org/ratelimit"
 
 	"github.com/maksadbek/statsfornba/internal/model"
 	repository "github.com/maksadbek/statsfornba/internal/repository/postgres"
@@ -20,8 +21,9 @@ import (
 
 type Config struct {
 	Kafka struct {
-		Addr  []string `required:"true"`
-		Topic []string `required:"true"`
+		Addr              []string `required:"true"`
+		Topic             []string `required:"true"`
+		ConsumerRateLimit int      `default:"100"`
 	}
 
 	Postgres struct {
@@ -46,6 +48,8 @@ func Run() error {
 		return err
 	}
 
+	rl := ratelimit.New(c.Kafka.ConsumerRateLimit)
+
 	consumer, err := kafka.NewConsumer(c.Kafka.Addr, c.Kafka.Topic, "stats-consumer-group", "consumer-app", kafka.MessageHandler(func(key, value []byte) error {
 		log.Printf("recevied message, key = %v, value = %v", string(key), string(value))
 
@@ -59,6 +63,8 @@ func Run() error {
 
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
+
+		rl.Take() // wait until ratelimiter allows to proceed
 
 		err = statsRepo.Add(ctx, &stat)
 		if err != nil {
