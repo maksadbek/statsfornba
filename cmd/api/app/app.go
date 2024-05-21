@@ -73,6 +73,7 @@ func Run() error {
 	}
 
 	r := gin.Default()
+	r.MaxMultipartMemory = 8 << 20 // 8 MiB
 
 	r.GET("/status", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
