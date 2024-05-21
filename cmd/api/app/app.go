@@ -1,12 +1,17 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"encoding/csv"
 	"log"
 	"math"
 	"net/http"
+	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/kelseyhightower/envconfig"
@@ -19,6 +24,10 @@ import (
 )
 
 type Config struct {
+	HTTPServer struct {
+		Addr string `default:":8080"`
+	}
+
 	Kafka struct {
 		Addr  []string `required:"true"`
 		Topic string   `required:"true"`
@@ -73,7 +82,34 @@ func Run() error {
 	r.GET("/:team/:season/:player", a.PlayerStatsHandler())
 	r.POST("/upload", a.UploadStatsHandler())
 
-	return r.Run(":8080")
+	srv := &http.Server{
+		Addr:    c.HTTPServer.Addr,
+		Handler: r.Handler(),
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("shutdown Server ...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("server Shutdown:", err)
+	}
+
+	<-ctx.Done()
+	log.Println("timeout of 5 seconds, server exiting")
+
+	return nil
 }
 
 func (a *App) UploadStatsHandler() func(c *gin.Context) {

@@ -11,17 +11,6 @@ const (
 	StatMinutesPlayed = "minutes_played"
 )
 
-var AllStats = [...]string{
-	StatPoints,
-	StatRebounds,
-	StatAssists,
-	StatSteals,
-	StatBlocks,
-	StatFouls,
-	StatTurnovers,
-	StatMinutesPlayed,
-}
-
 type Stat struct {
 	Player string
 	Team   string
