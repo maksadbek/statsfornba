@@ -3,7 +3,8 @@ package app
 import (
 	"database/sql"
 	"encoding/csv"
-	"fmt"
+	"log"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -65,7 +66,7 @@ func Run() error {
 	r := gin.Default()
 
 	r.GET("/status", func(c *gin.Context) {
-		c.String(http.StatusOK, "pong")
+		c.String(http.StatusOK, "ok")
 	})
 
 	r.GET("/:team/:season", a.TeamStatsHandler())
@@ -85,7 +86,8 @@ func (a *App) UploadStatsHandler() func(c *gin.Context) {
 
 		f, err := file.Open()
 		if err != nil {
-			fmt.Println(err)
+			log.Println("failed to open file", err)
+			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
 
@@ -95,13 +97,13 @@ func (a *App) UploadStatsHandler() func(c *gin.Context) {
 
 		head, err := csvReader.Read()
 		if err != nil {
-			fmt.Println(err)
+			log.Println("failed to read the first row from csv file", err)
+			c.AbortWithError(http.StatusBadRequest, err)
 
 			return
 		}
 
 		idx := map[string]int{}
-
 		for i, h := range head {
 			idx[h] = i
 		}
@@ -109,20 +111,85 @@ func (a *App) UploadStatsHandler() func(c *gin.Context) {
 		for {
 			rec, err := csvReader.Read()
 			if err != nil {
+				c.AbortWithError(http.StatusBadRequest, err)
+
 				break
 			}
 
 			team := rec[idx["team"]]
 			player := rec[idx["player"]]
 			season := rec[idx["season"]]
-			points, _ := strconv.Atoi(rec[idx["points"]])
-			rebounds, _ := strconv.Atoi(rec[idx["rebounds"]])
-			assists, _ := strconv.Atoi(rec[idx["assists"]])
-			steals, _ := strconv.Atoi(rec[idx["steals"]])
-			blocks, _ := strconv.Atoi(rec[idx["blocks"]])
-			fouls, _ := strconv.Atoi(rec[idx["fouls"]])
-			turnovers, _ := strconv.Atoi(rec[idx["turnovers"]])
-			minutesPlayed, _ := strconv.Atoi(rec[idx["minutes played"]])
+
+			if team == "" || player == "" || season == "" {
+				log.Println("team, player or season cannot be empty", rec)
+				continue
+			}
+
+			points, err := strconv.Atoi(rec[idx["points"]])
+			if err != nil {
+				log.Println("invalid points value, skipping", err, rec)
+				continue
+			}
+
+			rebounds, err := strconv.Atoi(rec[idx["rebounds"]])
+			if err != nil {
+				log.Println("invalid rebounds value, skipping", err, rec)
+				continue
+			}
+
+			assists, err := strconv.Atoi(rec[idx["assists"]])
+			if err != nil {
+				log.Println("invalid assists value, skipping", err, rec)
+				continue
+			}
+
+			steals, err := strconv.Atoi(rec[idx["steals"]])
+			if err != nil {
+				log.Println("invalid steals value, skipping", err, rec)
+				continue
+			}
+
+			blocks, err := strconv.Atoi(rec[idx["blocks"]])
+			if err != nil {
+				log.Println("invalid blocks value, skipping", err, rec)
+				continue
+			}
+
+			fouls, err := strconv.Atoi(rec[idx["fouls"]])
+			if err != nil {
+				log.Println("invalid fouls value, skipping", err, rec)
+				continue
+			}
+
+			if fouls < 0 || fouls > 6 {
+				log.Println("invalid fouls value, must be between 0 and 6, skipping", err, rec)
+				continue
+			}
+
+			turnovers, err := strconv.Atoi(rec[idx["turnovers"]])
+			if err != nil {
+				log.Println("invalid turnovers value, skipping", err, rec)
+				continue
+			}
+
+			minutesPlayed, err := strconv.ParseFloat(rec[idx["minutes played"]], 32)
+			if err != nil {
+				log.Println("invalid turnovers value, skipping", err, rec)
+				continue
+			}
+
+			minutes, seconds := math.Modf(minutesPlayed)
+
+			if points < 0 ||
+				rebounds < 0 ||
+				blocks < 0 ||
+				turnovers < 0 ||
+				minutesPlayed < 0 || minutesPlayed > 48.0 ||
+				steals < 0 ||
+				assists < 0 {
+				log.Println("invalid values, stats must be positive and minutes played must be less than 48.0", rec)
+				continue
+			}
 
 			stat := model.Stat{
 				Team:          team,
@@ -135,13 +202,15 @@ func (a *App) UploadStatsHandler() func(c *gin.Context) {
 				Blocks:        uint32(blocks),
 				Fouls:         uint32(fouls),
 				Turnovers:     uint32(turnovers),
-				MinutesPlayed: uint32(minutesPlayed),
+				SecondsPlayed: uint32(minutes)*60 + uint32(seconds*10),
 			}
 
-			fmt.Println("publish", stat)
+			log.Println("publishing the event to kafka", stat)
+
 			err = a.stats.Add(&stat)
 			if err != nil {
-				fmt.Println(err)
+				log.Println("failed to publish", err)
+				continue
 			}
 		}
 	}
@@ -155,7 +224,7 @@ func (a *App) PlayerStatsHandler() func(c *gin.Context) {
 
 		stats, err := a.playerController.GetAverageStats(c.Request.Context(), player, team, season)
 		if err != nil {
-			c.Error(err)
+			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
 
@@ -170,7 +239,7 @@ func (a *App) TeamStatsHandler() func(c *gin.Context) {
 
 		stats, err := a.teamController.GetAverageStats(c.Request.Context(), team, season)
 		if err != nil {
-			c.Error(err)
+			c.AbortWithError(http.StatusInternalServerError, err)
 			return
 		}
 

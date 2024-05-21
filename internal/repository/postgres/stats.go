@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"database/sql"
-	"fmt"
 
 	"github.com/maksadbek/statsfornba/internal/model"
 )
@@ -44,11 +43,10 @@ func (s *Stats) Add(ctx context.Context, stat *model.Stat) error {
 		stat.Blocks,
 		stat.Fouls,
 		stat.Turnovers,
-		int(stat.MinutesPlayed*100),
+		stat.SecondsPlayed,
 	)
 
 	if err != nil {
-		fmt.Println("here")
 		return err
 	}
 
@@ -76,7 +74,7 @@ func (s *Stats) Add(ctx context.Context, stat *model.Stat) error {
 		stat.Blocks,
 		stat.Fouls,
 		stat.Turnovers,
-		int(stat.MinutesPlayed*100),
+		stat.SecondsPlayed,
 	)
 
 	if err != nil {

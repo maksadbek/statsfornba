@@ -1,10 +1,14 @@
 package main
 
-import "github.com/maksadbek/statsfornba/cmd/consumer/app"
+import (
+	"log"
+
+	"github.com/maksadbek/statsfornba/cmd/consumer/app"
+)
 
 func main() {
 	err := app.Run()
 	if err != nil {
-		panic(err)
+		log.Fatal("failed to start the application", err)
 	}
 }

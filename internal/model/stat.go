@@ -34,7 +34,7 @@ type Stat struct {
 	Blocks        uint32
 	Fouls         uint32
 	Turnovers     uint32
-	MinutesPlayed uint32
+	SecondsPlayed uint32
 }
 
 type AverageStat struct {

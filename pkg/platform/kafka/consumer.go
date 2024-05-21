@@ -46,7 +46,7 @@ func (c *Consumer) Consume(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			c.done <- struct{}{}
-			return nil
+			return context.Canceled
 		default:
 		}
 
@@ -64,7 +64,11 @@ func (c *Consumer) Consume(ctx context.Context) error {
 func (c *Consumer) WaitUntilShutdown(ctx context.Context) {
 	// close the reader when there are consumers left.
 	defer c.client.Close() //nolint:errcheck
-	<-c.done
+
+	select {
+	case <-ctx.Done():
+	case <-c.done:
+	}
 }
 
 // ConsumerGroupHandler represents a Sarama consumer group consumer

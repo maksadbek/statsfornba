@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/maksadbek/statsfornba/internal/model"
 	"github.com/maksadbek/statsfornba/pkg/platform/kafka"
@@ -24,6 +25,9 @@ func (c *Stats) Add(stat *model.Stat) error {
 	}
 
 	err = c.publisher.Publish(string(js))
+	if err != nil {
+		return fmt.Errorf("failed to publish the event to Kafka: %w", err)
+	}
 
-	return err
+	return nil
 }

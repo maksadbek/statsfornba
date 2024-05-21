@@ -4,7 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/kelseyhightower/envconfig"
 	_ "github.com/lib/pq"
@@ -43,27 +47,67 @@ func Run() error {
 	}
 
 	consumer, err := kafka.NewConsumer(c.Kafka.Addr, c.Kafka.Topic, "stats-consumer-group", "consumer-app", kafka.MessageHandler(func(key, value []byte) error {
-		fmt.Println(string(key), string(value))
+		log.Printf("recevied message, key = %v, value = %v", string(key), string(value))
 
 		var stat model.Stat
 
 		err := json.Unmarshal(value, &stat)
 		if err != nil {
-			fmt.Println("error", err)
+			log.Println("invalid payload, unable to unmarshal", err)
+			return err
 		}
 
-		err = statsRepo.Add(context.Background(), &stat)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+
+		err = statsRepo.Add(ctx, &stat)
 		if err != nil {
-			fmt.Println(err)
+			log.Println("failed to create stat", err)
+			return err
 		}
 
 		return nil
 	}))
+
 	if err != nil {
 		return err
 	}
 
-	err = consumer.Consume(context.Background())
+	cooldownPeriod := time.Minute
 
-	return err
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go func() {
+		for {
+			err = consumer.Consume(ctx)
+			if err != nil {
+				if err == context.Canceled {
+					log.Println("context cancelled, stopping!")
+					return
+				}
+
+				log.Println("failed to start Kafka consumer", err)
+				time.Sleep(cooldownPeriod)
+			} else {
+				return
+			}
+		}
+	}()
+
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, syscall.SIGTERM, syscall.SIGINT)
+
+	<-shutdown
+
+	log.Println("shutting down application")
+
+	cancel()
+
+	ctx, cancel = context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+
+	log.Println("wait until consumers shutdown")
+	consumer.WaitUntilShutdown(ctx)
+
+	return nil
 }
