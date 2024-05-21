@@ -56,6 +56,8 @@ we add more instances.
 
 * I used Postgresql and Kafka because I'm more familiar with them. But also I believe they're scalable and perfectly covers requirements.
 
+* I didn't know where to get team, player name, and season information and just added these into logs.
+
 #### API reference
 
 - `POST /upload`
